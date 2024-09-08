@@ -36,6 +36,18 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
 
+  # Google Mapsのライブラリをインポート
+  google_maps_flutter: ^2.9.0
+  google_maps_flutter_web: ^0.5.10
+  http: ^0.13.0
+  google_maps_webservice: ^0.0.20-nullsafety.5
+  sliding_up_panel: ^2.0.0+1
+  cached_network_image: ^3.3.1
+  flutter_map: ^4.0.0
+  latlong2: ^0.8.2
+  flutter_tts: ^3.5.0
+  audioplayers: ^0.20.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
