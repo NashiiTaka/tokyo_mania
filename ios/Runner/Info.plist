@@ -49,5 +49,7 @@
 	<string>We need your microphone for speech recognition</string>
 	<key>Google Maps API Key</key>
 	<string>${iOSGoogleMapApiKey}</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>This app needs access to location when open.</string>
 </dict>
 </plist>

@@ -1,25 +1,56 @@
 import 'dart:ui';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:google_maps_webservice/places.dart';
 import 'package:tokyo_mania/get_marker_image.dart';
-import 'package:tokyo_mania/sliding_up_panel.dart';
+import 'package:tokyo_mania/markdown.dart';
+import 'package:tokyo_mania/markdown_with_yt.dart';
+import 'package:tokyo_mania/scroll.dart';
+import 'package:tokyo_mania/map_route.dart';
+import 'package:tokyo_mania/map_route_gpt.dart';
 import 'package:sliding_up_panel/sliding_up_panel.dart';
-import 'package:cached_network_image/cached_network_image.dart';
+// import 'package:cached_network_image/cached_network_image.dart';
+import 'package:tokyo_mania/src/SupabaseUtil.dart';
+import 'package:tokyo_mania/src/features.dart';
+import 'package:tokyo_mania/src/explanations.dart';
+import 'package:tokyo_mania/src/language_infos.dart';
+import 'package:tokyo_mania/src/route.dart';
+import 'package:tokyo_mania/youtube.dart';
+// import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:geolocator/geolocator.dart';
+import 'dart:math' as math;
+import 'package:flutter/rendering.dart';
 
-void main() => runApp(MyApp());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  SupabaseUtil.initialize();
+  // WidgetsFlutterBinding.ensureInitialized();
+  // SystemChrome.setSystemUIOverlayStyle(
+  //   const SystemUiOverlayStyle(
+  //     statusBarColor: Colors.blueAccent,
+  //   ),
+  // );
+  // runApp(const YoutubePlayerDemoApp());
+
+  runApp(const MyApp());
+}
 
 class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+
   @override
   Widget build(BuildContext context) {
-    const googleMapsApiKey = String.fromEnvironment('googleMapsApiKey');
-    print(googleMapsApiKey); // 'dev'
-
     return MaterialApp(
       home: MapScreen(),
+      // home: MarkdownLinkExample(),
       // home: GetMarkerImage()
       // home: SlidingUpPanelExample(),
+      // home: MarkdownExample(),
+      // home: SlidingMarkdownPanel()
+      // home: RouteMapScreen(),
+      // home: MapScreenGPT(),
     );
   }
 }
@@ -31,196 +62,51 @@ class MapScreen extends StatefulWidget {
 
 class _MapScreenState extends State<MapScreen> {
   PanelController _panelController = PanelController();
-  GoogleMapController? mapController;
-  Set<Marker> _markers = {};
-  Set<Polyline> _polylines = {};
+
+  /// GoogleMapsのコントローラー
+  GoogleMapController? _mapController;
+
+  /// 地図上に表示するマーカー
+  final Map<String, Marker> _markers = {};
+  final Map<String, dynamic> _remainGuideFeatures = {};
+  final Set<Polyline> _polylines = {};
   double _panelHeightOpen = 0;
   final double _panelHeightClosed = 0;
-  String _currentPlaceId = '';
-  String _currentLanguage = '日本語'; // 初期言語
+  int _currentFeatureId = 0;
+  Language _currentLanguage = Language.JP; // 初期言語
   final FlutterTts _flutterTts = FlutterTts();
   bool _isSoundPlaying = false;
-  String _soundPlayingPlaceId = '';
+  int _soundPlayingFeatureId = 0;
+  Position? _currentPosition;
+  bool _centerOnLocation = true;
+  StreamSubscription<Position>? _positionStreamSubscription;
+  List<Marker> _popupedMarkers = [];
+
+  // 目的地の位置（例：近所の場所）
+  final LatLng _destination = LatLng(35.584036, 139.547407);
+  // 目的地に到達したかどうかのフラグ
 
   final GoogleMapsPlaces _googleMapsPlaces =
-      GoogleMapsPlaces(apiKey: 'AIzaSyAX69oZWYzbY_ZRyMwHkcKseEZvw3Jiz-M');
+      GoogleMapsPlaces(apiKey: const String.fromEnvironment('googleMapApiKey'));
 
-  final Map<String, Map<String, dynamic>> _markerInfos = {
-        'ChIJ__-ru7qMGGARO4TqjNgbWpo': {
-      'nameJP': 'CAFÉ 杜のテラス',
-      'nameENG': '',
-      'descJP':
-          '''来てくれてありがとう。
-私はまりぃです。こちらはなっしーです。
-わたしたちは観光案内のテストサービスをしています。よろしくお願いします！
-お名前を伺ってよろしいですか？
-
-これから、明治神宮の主要なスポットを案内していきます。
-所要時間は約1時間です。私達はあまり英語が上手ではないので、英語の説明が難しい場所は、アプリを使って説明します。もし質問があれば、ゆっくり話してください。写真を撮りたい場所があったらいつでも言ってください！ガイド中の様子を撮らせて頂きたいのですが、SNSにアップロードしてもよろしいでしょうか？ガイドが終わったら、簡単なアンケートにご記入いただきフィードバックを頂けますでしょうか。
-初めてのガイドのため、上手にできないところがあったらすいません！
-
-では、いきましょう！''',
-      'descENG':
-          '''Thank you for coming.
-I'm Marii, and this is Nasshi.
-We are testing a tour guide service.
-Thank you in advance!
-Can you tell me your names?
-
-I'll be showing you the main spots of Meiji Shrine from now.
-The tour will take about an hour.
-Since we're not very good at English, we'll use an app to explain difficult parts.
-If you have any questions, please speak slowly.
-If you'd like to take photos anywhere, feel free to let us know!
-We'd also like to take photos during the tour. Is it okay to upload them to social media?
-After the tour, could you please fill out a short survey and give us your feedback?
-Since this is our first time guiding, we're sorry if there are any parts we don't do well!
-OK! Let'go.''',
-    },
-
-
-    'ChIJJzR9pLqMGGARn__Fp9eG3sg': {
-      'nameJP': '明治神宮 一の鳥居',
-      'nameENG': 'Meiji Jingu Ichino Torii',
-      'descJP':
-          '''明治神宮は、明治天皇と昭憲皇太后に奉納された東京の神社です。静かな森に囲まれており、人々は幸運を祈ったり、日本文化を学んだりするために訪れます。
-
-明治神宮の一の鳥居は、高さ約12メートル、幅約9.1メートルの巨大な木造鳥居で、参拝者が最初に通る重要な門です。樹齢1500年の台湾産ヒノキで作られ、1975年に建て替えられました。鳥居は神聖な領域と俗世を分ける役割を持ち、明治神宮の威厳と格式を象徴しています。一の鳥居をくぐると、緑豊かな参道が続きます。''',
-      'descENG':
-          '''Meiji Jingu is a shrine in Tokyo dedicated to Emperor Meiji and Empress Shoken. It's surrounded by a peaceful forest where people visit to pray for good luck or learn about Japanese culture.
-
-The first torii gate is a huge wooden gate, about 12 meters tall and 9.1 meters wide. Made from 1,500-year-old Taiwanese cypress, it was rebuilt in 1975. The gate separates the sacred area from the everyday world and shows the shrine's importance. After passing through it, you'll walk along a lush, green path.''',
-    },
-
-    'ChIJzfzeJtiNGGARoTnuEtnUtCQ': {
-      'nameJP': '神橋',
-      'nameENG': 'Meiji Jingu Shinkyo (Sacred Bridge)',
-      'descJP':
-          '''明治神宮の神橋（しんきょう）は、明治神宮の参道にある朱塗りの木製の橋です。神橋は、明治神宮の内苑にある清正井（きよまさのいど）から流れる小川を渡るために架けられています。
-
-この橋は、神聖な場所への入り口とされており、参拝者が渡ることで、心身を清めるという意味が込められています。また、神橋のデザインはシンプルでありながらも美しく、自然の景観と調和しています。橋の両側には大きな木々が生い茂り、四季折々の風景を楽しむことができます。
-
-神橋は明治神宮の静謐な雰囲気を保つ一部であり、訪れる人々にとって特別な体験を提供します。''',
-      'descENG':
-          '''Shinkyō Bridge at Meiji Shrine is a vermilion-painted wooden bridge located along the shrine’s approach. It spans a stream that flows from Kiyomasa’s Well in the inner garden of Meiji Shrine.
-
-This bridge is regarded as an entrance to a sacred area, and crossing it symbolizes the purification of the mind and body for worshippers. The design of the bridge, while simple, is elegant and harmonizes beautifully with the surrounding natural scenery. Large trees grow on both sides of the bridge, allowing visitors to enjoy the seasonal landscapes.
-
-Shinkyō Bridge is part of the serene atmosphere of Meiji Shrine, offering a special experience to those who visit.''',
-    },
-
-    'ChIJw-yvkzeNGGARjGUxRzKNPKQ': {
-      'nameJP': '明治神宮ミュージアム',
-      'nameENG': 'Meiji Jingu Museum',
-      'descJP':
-          '''明治神宮ミュージアムは、2019年に開館し、明治神宮の歴史や明治天皇と昭憲皇太后に関する貴重な資料を展示する博物館です。隈研吾氏設計の自然と調和した建物が特徴で、常設展示に加え、特別展やイベントも開催されています。''',
-      'descENG':
-          '''The Meiji Shrine Museum opened in 2019. It is a museum that displays valuable materials about the history of Meiji Shrine and Emperor Meiji and Empress Shoken. The building, designed by Kengo Kuma, is known for its harmony with nature. In addition to the permanent exhibits, special exhibitions and events are also held.''',
-    },
-
-    'ChIJq6qaE7qMGGAR2GNDRLN-dlc': {
-      'nameJP': 'フォレストテラス明治神宮',
-      'nameENG': '',
-      'descJP':
-          '''「フォレストテラス明治神宮」は、東京の明治神宮内にある静かな休憩スポットです。豊かな緑に囲まれたこの場所は、参拝の合間にひと息つくのに最適です。テラスにはカフェやショップもあり、神宮の自然を感じながら、リラックスした時間を過ごすことができます。また、季節ごとに変わる景色が楽しめるのも魅力です。都会の喧騒を忘れ、心を落ち着かせるひとときを提供してくれる場所です。''',
-      'descENG':
-          '''''',
-    },
-
-    'ChIJPfm-ilONGGARmj2X4hbsxQ8': {
-      'nameJP': '代々木',
-      'nameENG': '',
-      'descJP':
-          '''明治神宮参道に立つ「代々木」の地名の由来となったとされている樹木。江戸時代に彦根藩井伊家下屋敷であった当地には代々樅の巨木があり、「代々大きな木があった」という意味で「代々木」との地名が発祥したそうです。なお、当時の木は、太平洋戦争末期の昭和２０年（１９４５年）５月、アメリカ軍による空襲の際、高射砲で撃墜されたＢ－２９が直撃して焼失したそうです。''',
-      'descENG':
-          '''''',
-    },
-
-    'ChIJg54kYcGNGGARBAR_zttpZuw': {
-      'nameJP': '奉献酒樽',
-      'nameENG': '',
-      'descJP':
-          '''「奉献酒樽」は明治神宮の参道に並ぶ酒樽で、全国の酒造メーカーから奉納され、日本の伝統文化と酒造りを象徴しています。また、フランス産のワイン樽もあり、国際文化交流も示しています。日本の神社で酒樽が並ぶ習慣は、神道の信仰に由来し、江戸時代以降、神社への奉納が広まりました。全国の神社で見られる酒樽は、地域社会との結びつきを象徴しています。''',
-      'descENG':
-          '''The 'Offering Sake Barrels' are lined up along the path to Meiji Shrine. They are donated by sake makers from all over Japan and show traditional Japanese culture. There are also wine barrels from France, showing international exchange. This practice started in the Edo period and shows the connection between shrines and local communities.''',
-    },
-
-    'ChIJdxIIoMqNGGARcuXbPfj1GTk': {
-      'nameJP': '奉献葡萄酒樽',
-      'nameENG': '',
-      'descJP':
-          '''明治神宮には、フランスブルゴーニュから奉納された空のワイン樽が並んでいます。樽にはドメーヌ名や銘柄（例：ロマネコンティ）が記され、2006年から毎年増えて現在は60樽。明治天皇のワイン愛好がきっかけで、ブルゴーニュ名誉市民の佐多保彦氏が献納を提案しました。フランス人観光客は、このワイン樽を誇りに思っているそうです。''',
-      'descENG':
-          '''At Meiji Shrine, there are empty wine barrels from Burgundy, France. Each barrel has a winery name, like 'Romanée-Conti.' Since 2006, the number has grown to 60. This started because Emperor Meiji loved wine, and a French citizen suggested the donation. French tourists are very proud of these barrels.''',
-    },
-
-    'ChIJsyv0pLqMGGARO-cDLT1bCeU': {
-      'nameJP': '大鳥居',
-      'nameENG': '',
-      'descJP':
-          '''「大鳥居」は高さ12メートル、幅17.1メートルの日本最大の木造明神鳥居で、南参道と北参道の合流地点に立っています。1920年に台湾の檜で建立されましたが、1966年に落雷で破壊。現在の鳥居は樹齢1500年の檜から作られ、1975年に完成しました。檜は台湾の丹大山で発見され、再建には多くの支援がありました。''',
-      'descENG':
-          '''The 'Otorii' is the largest wooden torii gate in Japan, 12 meters tall and 17.1 meters wide. It stands where the South and North paths meet. The first one, built in 1920 from Taiwanese cypress, was struck by lightning in 1966. The current gate, made from 1,500-year-old cypress, was finished in 1975. Many people helped rebuild it.''',
-    },
-
-    'ChIJiVvc68aNGGARC42Rkxw8GlY': {
-      'nameJP': '明治神宮 三の鳥居',
-      'nameENG': 'Meiji Jingu Sanno Torii',
-      'descJP':
-          '''神社に入る際、拝観者は手水舎で手と口を清める儀式を行います。柄杓を使って手と口を洗い、信仰に関係なく誰でも行うことが歓迎されています。''',
-      'descENG':
-          '''Before entering a shrine, visitors wash their hands and mouth at the water fountain. They use a ladle to do this. Anyone, regardless of their faith, is welcome to do this ritual.''',
-    },
-
-    'ChIJJ4l9AMuNGGAR9sc40w4RaMI': {
-      'nameJP': '明治神宮 夫婦楠',
-      'nameENG': '',
-      'descJP':
-          '''「夫婦楠」は、明治神宮にある2本のクスノキで、注連縄で結ばれています。神聖な繋がりを示し、悪霊を祓う役割もあります。1920年に植えられ、幸福や結婚、家族の健康の象徴とされ、恋愛運や結婚の成功を求める人々に人気です。''',
-      'descENG':
-          '''hese camphor trees are called Meoto Kusu, or ‘husband and wife trees.’ They are connected by a rope, called a shimenawa, which shows their special bond and keeps away bad spirits.
-
-Planted in 1920 when Meiji Jingu was established, the trees have grown together since. They symbolize a strong and happy marriage and a healthy family. People visit them to wish for love and success in marriage.''',
-    },
-
-    'ChIJ5SZMmreMGGARcz8QSTiJyo8': {
-      'nameJP': '明治神宮 本殿',
-      'nameENG': '',
-      'descJP':
-          '''本殿は明治神宮で最も神聖な建物で、神霊が祀られています。日々の祭儀は午前8時と午後2時に行われ、ヒノキと銅で作られた流造様式の建物です。1920年に建立されましたが、戦火で焼失し、現在の建物は1958年完成です。防火のため、木の樹皮の代わりに銅が使用されています。''',
-      'descENG':
-          '''The main hall is the most sacred building at Meiji Jingu, where the spirits are enshrined. Daily rituals are held at 8 a.m. and 2 p.m. The building is made of cypress and copper in a special style. It was originally built in 1920 but was destroyed in a fire. The current hall was completed in 1958, using copper instead of wood bark to prevent fire.''',
-    },
-
-    'ChIJ04pwyreMGGARKvoa9AYdtp8': {
-      'nameJP': '明治神宮 神楽殿（授与所）',
-      'nameENG': '',
-      'descJP':
-          '''【おみくじ】
-明治神宮のおみくじは「大御心」と呼ばれ、30首の和歌が書かれています。これらは明治天皇・皇后が詠んだ短歌で、解説文が添えられています。絵馬は木製で、片面に神社に関連する絵が描かれ、もう片面には願い事を書く空欄があります。絵馬は授与所で¥500で入手でき、皇室ゆかりの菊紋やその年の干支の絵が入っています。
-
-【絵馬】
-「絵馬」は古代の実馬奉納に由来し、現在は木片に馬の絵が描かれています。メッセージは自由で、信仰や言語を問わず誰でも書けます。書いた絵馬は楠の木の周りに掛け、毎朝の御饌祭で祈祷された後、お炊き上げされます。''',
-      'descENG':
-          '''## Omikuji
-At Meiji Jingu, the omikuji are called ‘Omi Kokoro’ and have 30 poems by Emperor and Empress Meiji with explanations. The ema (wish plaques) are wooden, with pictures on one side and space for your wish on the other. You can buy an ema for ¥500 at the gift shop. They feature the Imperial Chrysanthemum crest or the zodiac sign of the year.
-
-## About Ema
-Emas are wooden plaques with pictures of horses. People write messages on them, and they can be in any language. The emas are hung around a camphor tree and burned after a daily ritual.''',
-    },
-
-
-  };
+  late ScrollController _scrollController;
+  bool _canPanelMove = true;
 
   @override
   void initState() {
     super.initState();
-    _addMarkersFromPlaceIDs();
+    _addMarkersFromFeatureInfos();
+
+    _getCurrentLocation();
+    _startListeningToLocationChanges();
+
+    _scrollController = ScrollController();
+    _scrollController.addListener(_scrollListener);
 
     // 再生開始時のハンドラー
     _flutterTts.setStartHandler(() {
       setState(() {
-        _soundPlayingPlaceId = _currentPlaceId;
+        _soundPlayingFeatureId = _currentFeatureId;
         _isSoundPlaying = true;
       });
     });
@@ -228,7 +114,7 @@ Emas are wooden plaques with pictures of horses. People write messages on them, 
     // 再生完了時のハンドラー
     _flutterTts.setCompletionHandler(() {
       setState(() {
-        _soundPlayingPlaceId = '';
+        _soundPlayingFeatureId = 0;
         _isSoundPlaying = false;
       });
     });
@@ -242,68 +128,247 @@ Emas are wooden plaques with pictures of horses. People write messages on them, 
           context: context,
           builder: (context) => AlertDialog(content: Text('Error: $msg')));
     });
+  }
 
-    // _createPolylines();
+  void _scrollListener() {
+    print(_scrollController.offset);
+    if (_scrollController.offset <= 0) {
+      setState(() {
+        _canPanelMove = true;
+      });
+    } else {
+      setState(() {
+        _canPanelMove = false;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    debugPrint('Dispose method called for ${widget.runtimeType}');
+    _scrollController.removeListener(_scrollListener);
+    _scrollController.dispose();
+    _positionStreamSubscription?.cancel();
+    super.dispose();
+  }
+
+  void _getCurrentLocation() async {
+    bool serviceEnabled;
+    LocationPermission permission;
+
+    serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      // Location services are not enabled
+      return;
+    }
+
+    permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        // Permissions are denied
+        return;
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      // Permissions are permanently denied
+      return;
+    }
+
+    Position position = await Geolocator.getCurrentPosition();
+    _updatePosition(position);
+  }
+
+  void _startListeningToLocationChanges() {
+    // https://chatgpt.com/share/f3a83b58-3d9c-4c50-afee-c0125baee1d8
+    const LocationSettings locationSettings = LocationSettings(
+      accuracy: LocationAccuracy.high,
+      distanceFilter: 5,
+    );
+
+    _positionStreamSubscription =
+        Geolocator.getPositionStream(locationSettings: locationSettings)
+            .listen(_updatePosition);
+  }
+
+  void _updatePosition(Position position) async {
+    setState(() {
+      _currentPosition = position;
+    });
+
+    if (_centerOnLocation && _mapController != null) {
+      final currentZoomLevel = await _mapController!.getZoomLevel();
+      _mapController!.animateCamera(
+        CameraUpdate.newCameraPosition(
+          CameraPosition(
+            target: LatLng(position.latitude, position.longitude),
+            zoom: currentZoomLevel,
+          ),
+        ),
+      );
+    }
+
+    // 各マーカーとの距離をチェック
+    for (dynamic feature in List.from(_remainGuideFeatures.values)) {
+      double distanceInMeters = Geolocator.distanceBetween(
+        position.latitude,
+        position.longitude,
+        feature['Lat-Guide'],
+        feature['Lng-Guide'],
+      );
+
+      print('Distance to ${feature['FeatureName-JP']}: $distanceInMeters M');
+
+      if (distanceInMeters <= feature['GuideWithinMeters']) {
+        // マーカーのonTapイベントを呼び出す
+        // _remainGuideFeaturesからの削除処理は、タップイベント内で実施
+        _markers[feature['FeatureID'].toString()]!.onTap?.call();
+      }
+    }
   }
 
   // Place IDsからマーカーを追加する非同期メソッド
-  Future<void> _addMarkersFromPlaceIDs() async {
-    print(_markerInfos.length);
+  Future<void> _addMarkersFromFeatureInfos() async {
+    var numOfGuidance = 0;
+    for (var i = 0; i < features.length; i++) {
+      final feature = features[i];
+      final myExplanations = explanations
+          .where((e) => e['FeatureID'] == feature['FeatureID'])
+          .toList();
+      feature['explanations'] = myExplanations;
 
-    // markerInfosに含まれる各Place IDについて処理
-    _markerInfos.forEach((placeId, _) async {
-      // Google Maps APIからPlace IDを使って場所の詳細情報を取得
-      final placeDetails = await _googleMapsPlaces.getDetailsByPlaceId(
-        placeId,
-        language: 'ja', // 日本語で詳細情報を取得
-      );
+      final containsGuidanceRequired =
+          myExplanations.any((e) => e['IsGuidanceRequired'] == 1);
+
+      double? lat;
+      double? lng;
+      BitmapDescriptor? customIconPre;
+      BitmapDescriptor? customIconAft;
+
+      if (!containsGuidanceRequired) {
+        customIconPre =
+            await _createIcon('assets/images/markers/information.png');
+        customIconAft = customIconPre;
+      } else {
+        numOfGuidance++;
+        customIconPre = await _createIcon(
+            'assets/images/markers/red${numOfGuidance.toString().padLeft(2, '0')}.png');
+        customIconAft = await _createIcon(
+            'assets/images/markers/gray${numOfGuidance.toString().padLeft(2, '0')}.png');
+      }
+
+      if (feature['Lat-Main'] == '' || feature['Lng-Main'] == '') {
+        // Google Maps APIからPlace IDを使って場所の詳細情報を取得
+        final placeDetails = await _googleMapsPlaces.getDetailsByPlaceId(
+          feature['GoogleMapPlaceID'],
+          language: 'ja', // 日本語で詳細情報を取得
+        );
+
+        lat = placeDetails.result.geometry!.location.lat; // 緯度を設定
+        lng = placeDetails.result.geometry!.location.lng; // 経度を設定
+
+        print(feature['GoogleMapPlaceID'] +
+            '\t' +
+            lat.toString() +
+            '\t' +
+            lng.toString());
+      } else {
+        lat = double.parse(feature['Lat-Main'].toString());
+        lng = double.parse(feature['Lng-Main'].toString());
+      }
+
+      final featureId = feature['FeatureID'].toString();
 
       // マーカーを作成し、取得した場所の緯度・経度を設定
       final marker = Marker(
-        markerId: MarkerId(placeId), // Place IDをMarker IDとして設定
+        markerId: MarkerId(
+          featureId,
+        ), // Place IDをMarker IDとして設定
         position: LatLng(
-          placeDetails.result.geometry!.location.lat, // 緯度を設定
-          placeDetails.result.geometry!.location.lng, // 経度を設定
+          lat, // 緯度を設定
+          lng, // 経度を設定
         ),
-        infoWindow: InfoWindow(
-          title: placeDetails.result.name, // マーカーのタイトルを場所の名前に設定
-        ),
+        // infoWindowは表示させない
+        // infoWindow: InfoWindow(
+        //   title: feature['FeatureName-JP'], // マーカーのタイトルを場所の名前に設定
+        // ),
+        icon: customIconPre,
         // マーカーがタップされた時の処理
         onTap: () {
           setState(() {
-            _currentPlaceId = placeId;
+            final tappedMarker = _markers[featureId];
+            if (tappedMarker != null && tappedMarker.icon != customIconAft) {
+              _markers[featureId] = tappedMarker.copyWith(
+                iconParam: customIconAft,
+              );
+              // 案内予定のマーカーをリストから削除
+              _remainGuideFeatures.remove(featureId);
+            }
+            _currentFeatureId = feature['FeatureID'];
           });
 
           _panelController.animatePanelToPosition(1);
         },
       );
 
-      // setStateでマーカーリストに追加し、UIを更新
+      // setStateでマーカーリストと、残案内リストに追加し、UIを更新
       setState(() {
-        _markers.add(marker); // 新しいマーカーをリストに追加
+        _markers[featureId] = marker; // 新しいマーカーをリストに追加
+        _remainGuideFeatures[featureId] = feature;
       });
+    }
+
+    setState(() {
+      _createPolylines();
     });
+  }
+
+  Future<AssetMapBitmap> _createIcon(String path) {
+    return BitmapDescriptor.asset(
+      const ImageConfiguration(
+        size: Size(28, 28),
+      ),
+      path,
+    );
   }
 
   void _createPolylines() {
     setState(() {
+      final List<LatLng> points = [];
+
+      route.forEach((element) {
+        points.add(LatLng(element['Lat'], element['Lng']));
+      });
+
       _polylines.add(
         Polyline(
           polylineId: PolylineId('route'),
           color: Colors.blue.withOpacity(0.5),
           width: 5,
-          points: [
-            LatLng(35.7109, 139.7674), // Tokyo Station
-            LatLng(35.6895, 139.6917), // Shinjuku Station
-            LatLng(35.6585, 139.7010), // Shibuya Station
-          ],
+          points: points,
         ),
       );
     });
   }
 
   void _onMapCreated(GoogleMapController controller) {
-    mapController = controller;
+    _mapController = controller;
+    if (_currentPosition != null) {
+      _updatePosition(_currentPosition!);
+    }
+  }
+
+  void _onCameraMove(CameraPosition position) {
+    // If the map is moved manually, stop centering on location
+    _centerOnLocation = false;
+  }
+
+  void _onReturnToCurrentLocation() {
+    if (_currentPosition != null) {
+      _centerOnLocation = true;
+      _updatePosition(_currentPosition!);
+    }
   }
 
   @override
@@ -311,7 +376,7 @@ Emas are wooden plaques with pictures of horses. People write messages on them, 
     // https://chatgpt.com/share/f5a1368e-6390-47d9-b625-27e81b8067e6
 
     // パネルの高さを画面の高さの80%に設定
-    _panelHeightOpen = MediaQuery.of(context).size.height * .80;
+    _panelHeightOpen = MediaQuery.of(context).size.height * 0.85;
 
     return Material(
       // マテリアルデザインのスタイルを適用するためのウィジェットを提供します https://chatgpt.com/share/f811d628-0eb4-4b76-b551-3332dd996065
@@ -332,6 +397,29 @@ Emas are wooden plaques with pictures of horses. People write messages on them, 
             borderRadius: const BorderRadius.only(
               topLeft: Radius.circular(18.0), // パネルの左上の角を丸める
               topRight: Radius.circular(18.0), // パネルの右上の角を丸める
+            ),
+            // panel: GestureDetector(
+            //   onVerticalDragUpdate: (details) {
+            //     // スクロールが上端の場合のみパネルをドラッグ可能にする
+            //     if (_canPanelMove) {
+            //       _panelController.panelPosition += details.primaryDelta! / MediaQuery.of(context).size.height;
+            //       print('_panelController.panelPosition: ' + _panelController.panelPosition.toString());
+            //     }
+            //   },
+            //   child: _panel(null),
+            // ),
+          ),
+          // 上からのパネル
+          Transform(
+            alignment: Alignment.topCenter,
+            transform: Matrix4.identity()..rotateX(3.14159), // 180度回転して上からスライド
+            child: SlidingUpPanel(
+              panel: Center(child: Text('Top Panel')),
+              minHeight: 100,
+              maxHeight: 400,
+              borderRadius: BorderRadius.vertical(bottom: Radius.circular(24)),
+              parallaxEnabled: true,
+              parallaxOffset: 0.2,
             ),
           ),
 
@@ -384,129 +472,190 @@ Emas are wooden plaques with pictures of horses. People write messages on them, 
       // appBar: AppBar(
       //   title: Text('Google Maps Example'),
       // ),
-      body: GoogleMap(
-        onMapCreated: _onMapCreated,
-        initialCameraPosition: CameraPosition(
-          target: LatLng(35.6585, 139.7010), // Shibuya Station
-          zoom: 16.0,
-        ),
-        markers: _markers,
-        polylines: _polylines,
+      body: Stack(
+        children: [
+          GoogleMap(
+            onMapCreated: _onMapCreated,
+            initialCameraPosition: const CameraPosition(
+              target: LatLng(35.6585, 139.7010), // Shibuya Station
+              zoom: 16.0,
+            ),
+            markers: Set<Marker>.of(_markers.values),
+            polylines: _polylines,
+            myLocationEnabled: true, //現在位置をマップ上に表示
+            myLocationButtonEnabled: false,
+            onCameraMove: _onCameraMove,
+          ),
+          Positioned(
+            bottom: 16,
+            right: 16,
+            child: FloatingActionButton(
+              child: Icon(Icons.my_location),
+              onPressed: _onReturnToCurrentLocation,
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  // パネル側のWidget
-  Widget _panel(ScrollController sc) {
+  Widget _panel(ScrollController? sc) {
+    final txt = _generateText();
+
+    // return CustomMarkdownWidget(controller: sc, data: txt);
+
+    // return ListView.builder(
+    //   controller: sc,
+    //   itemCount: 50,
+    //   itemBuilder: (BuildContext context, int i) {
+    //     return Container(
+    //       padding: const EdgeInsets.all(12.0),
+    //       child: Text("$i"),
+    //     );
+    //   },
+    // );
+
+    return CustomScrollView(
+      // controller: sc,
+      slivers: [
+        SliverPersistentHeader(
+          pinned: true,
+          delegate: DynamicSliverPersistentHeaderDelegate(
+            // child: Container(
+            //   color: Colors.lightBlue,
+            child: _buildButtonArea(txt),
+            // ),
+          ),
+        ),
+        // SliverToBoxAdapter(
+        //   child: _buildButtonArea(txt),
+        // ),
+        SliverFillRemaining(
+          child: CustomMarkdownWidget(data: txt, controller: sc),
+        ),
+      ],
+    );
+  }
+
+  // Widget _panel(ScrollController? sc) {
+  //   final (caption, txt) = _generateText();
+  //   return NotificationListener<ScrollNotification>(
+  //     onNotification: (scrollNotification) {
+  //       if (scrollNotification is ScrollUpdateNotification) {
+  //         print(scrollNotification.metrics.pixels);
+
+  //         if (scrollNotification.metrics.pixels <= 0) {
+  //           setState(() {
+  //             _canPanelMove = true;
+  //           });
+  //         } else {
+  //           setState(() {
+  //             _canPanelMove = false;
+  //           });
+  //         }
+  //       }
+
+  //       // イベントのキャンセルをしないのでfalseを返却
+  //       return false;
+  //     },
+  //     child: CustomScrollView(
+  //       controller: sc,
+  //       slivers: [
+  //         SliverToBoxAdapter(
+  //           child: _buildButtonArea(txt),
+  //         ),
+  //         SliverFillRemaining(
+  //           child: CustomMarkdownWidget(data: txt),
+  //         ),
+  //       ],
+  //     ),
+  //   );
+  // }
+
+  String _generateText() {
     String txt = '';
-    String caption = '';
-    if (_currentPlaceId.isNotEmpty) {
-      txt = _markerInfos[_currentPlaceId]![
-          _currentLanguage == '日本語' ? 'descJP' : 'descENG'];
-      caption = _markerInfos[_currentPlaceId]![
-          _currentLanguage == '日本語' ? 'nameJP' : 'nameENG'];
+    String sufix = languageInfos[_currentLanguage]!.sufix;
+    if (_currentFeatureId == 0) {
+      return '';
     }
 
-    return SingleChildScrollView(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.start, // 子要素を一番上から開始
-        children: [
-          SizedBox(height: 10), // 行間を少し空ける
-          Container(
-            height: 5,
-            width: 100,
-            margin: EdgeInsets.only(top: 10),
-            decoration: BoxDecoration(
-              color: Colors.grey[400],
-              borderRadius: BorderRadius.circular(5),
-            ),
-          ),
+    final String caption = features.firstWhere(
+        (v) => v['FeatureID'] == _currentFeatureId)['FeatureName-$sufix'];
+    if (_currentFeatureId != 0) {
+      explanations
+          .where((e) => e['FeatureID'] == _currentFeatureId)
+          .forEach((e) {
+        txt += e['Explanation-$sufix'] + '  　  　\n\n';
+      });
+    }
+    return '# $caption  \n' + txt.replaceAll('\n', '　  　  \n');
+  }
 
-          Container(
-            padding: EdgeInsets.all(20.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start, // 左寄せ
-              children: [
-                SizedBox(height: 20), // 行間を少し空ける
-                // ボタンエリア
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    ElevatedButton(
-                      onPressed: () {
-                        _handleLanguageChange('日本語');
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _currentLanguage == '日本語'
-                            ? Colors.blue // 選択されたボタンの色
-                            : Colors.grey, // 非選択状態の色
-                      ),
-                      child: Text(
-                        '日本語',
-                        style: TextStyle(
-                          color: _currentLanguage == '日本語'
-                              ? Colors.white // 選択されたボタンの文字色
-                              : Colors.black, // 非選択状態の文字色
-                        ),
-                      ),
-                    ),
-                    SizedBox(width: 10),
-                    ElevatedButton(
-                      onPressed: () {
-                        _handleLanguageChange('English');
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _currentLanguage == 'English'
-                            ? Colors.blue // 選択されたボタンの色
-                            : Colors.grey, // 非選択状態の色
-                      ),
-                      child: Text(
-                        'English',
-                        style: TextStyle(
-                          color: _currentLanguage == 'English'
-                              ? Colors.white // 選択されたボタンの文字色
-                              : Colors.black, // 非選択状態の文字色
-                        ),
-                      ),
-                    ),
-                    SizedBox(width: 10),
-                    ElevatedButton(
-                      onPressed: () {
-                        _isSoundPlaying ? _stopSpeak() : _startSpeak(txt);
-                      },
-                      style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blue // 選択されたボタンの色
-                          ),
-                      child: Text(
-                        _isSoundPlaying ? 'Stop' : 'Speak',
-                        style: TextStyle(color: Colors.white // 選択されたボタンの文字色
-                            ),
-                      ),
-                    ),
-                  ],
-                ),
-                SizedBox(height: 10), // 行間を少し空ける
-                Center(
-                  // 1行目をセンタリング
-                  child: Text(
-                    caption,
-                    style: TextStyle(
-                      fontSize: 24, // 大きめの文字
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                SizedBox(height: 10), // 行間を少し空ける
-                Text(
-                  txt,
-                  style: TextStyle(
-                    fontSize: 18, // 少し小さめの文字
-                  ),
-                ),
-              ],
-            ),
+  Widget _buildButtonArea(String txt) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(20),
+          topRight: Radius.circular(20),
+        ),
+      ),
+
+      // constraints: BoxConstraints(minHeight: 100), // 最小高さを設定
+      child: Column(
+        // mainAxisSize: MainAxisSize.min, // これを追加
+        children: [
+          SizedBox(height: 8),
+          // Container(
+          //   height: 5,
+          //   width: 100,
+          //   margin: EdgeInsets.only(top: 10),
+          //   decoration: BoxDecoration(
+          //     color: Colors.grey[400],
+          //     borderRadius: BorderRadius.circular(5),
+          //   ),
+          // ),
+          // SizedBox(height: 20),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _buildLanguageButton(Language.JP),
+              SizedBox(width: 10),
+              _buildLanguageButton(Language.English),
+              SizedBox(width: 10),
+              _buildSpeakButton(txt),
+            ],
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildLanguageButton(Language language) {
+    return ElevatedButton(
+      onPressed: () => _handleLanguageChange(language),
+      style: ElevatedButton.styleFrom(
+        backgroundColor:
+            _currentLanguage == language ? Colors.blue : Colors.grey,
+      ),
+      child: Text(
+        languageInfos[language]!.display,
+        style: TextStyle(
+          color: _currentLanguage == language ? Colors.white : Colors.black,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSpeakButton(String txt) {
+    return ElevatedButton(
+      onPressed: () {
+        _isSoundPlaying ? _stopSpeak() : _startSpeak(txt);
+      },
+      style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
+      child: Text(
+        _isSoundPlaying ? 'Stop' : 'Speak',
+        style: TextStyle(color: Colors.white),
       ),
     );
   }
@@ -516,26 +665,111 @@ Emas are wooden plaques with pictures of horses. People write messages on them, 
       await _stopSpeak();
     }
 
-    await _flutterTts.setLanguage('en-US'); // 英語の設定
+    value = value.replaceAll(RegExp(r'\[.*?\]\(.*?\)'), '');
+
+    await _flutterTts
+        .setLanguage(languageInfos[_currentLanguage]!.languageCode); // 英語の設定
     await _flutterTts.setSpeechRate(0.5); // 速度調整
-    await _flutterTts.setPitch(1.0); // 音程
+    await _flutterTts.setPitch(1.00); // 音程
     await _flutterTts.speak(value); // 読み上げるテキスト
   }
 
   Future _stopSpeak() async {
     await _flutterTts.stop(); // 再生を中止
     setState(() {
-      _soundPlayingPlaceId = '';
+      _soundPlayingFeatureId = 0;
       _isSoundPlaying = false; // 中止した場合も再生状態を false に更新
     });
   }
 
-  void _handleLanguageChange(String language) {
+  void _handleLanguageChange(Language language) {
     setState(() {
       _currentLanguage = language;
     });
     // 言語変更の処理をここに記述
-    print('選択された言語: $language');
+    print('選択された言語: ${languageInfos[language]!.display}');
     // ここで必要な処理を追加
+  }
+}
+
+class DynamicSliverPersistentHeaderDelegate
+    extends SliverPersistentHeaderDelegate {
+  final Widget child;
+  double _height = 60; // 初期高さ
+  VoidCallback? _triggerRebuild;
+
+  DynamicSliverPersistentHeaderDelegate({required this.child});
+
+  void updateHeight(Size size) {
+    if (_height != size.height) {
+      _height = size.height;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _triggerRebuild?.call();
+      });
+    }
+  }
+
+  @override
+  double get minExtent => _height;
+
+  @override
+  double get maxExtent => _height;
+
+  @override
+  Widget build(
+      BuildContext context, double shrinkOffset, bool overlapsContent) {
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        _triggerRebuild = () {
+          if (constraints.biggest.height != _height) {
+            (context as Element).markNeedsBuild();
+          }
+        };
+        return SizeReportingWidget(
+          onSizeChange: updateHeight,
+          child: child,
+        );
+      },
+    );
+  }
+
+  @override
+  bool shouldRebuild(
+      covariant DynamicSliverPersistentHeaderDelegate oldDelegate) {
+    return child != oldDelegate.child || _height != oldDelegate._height;
+  }
+}
+
+class SizeReportingWidget extends SingleChildRenderObjectWidget {
+  final void Function(Size size) onSizeChange;
+
+  const SizeReportingWidget({
+    Key? key,
+    required this.onSizeChange,
+    required Widget child,
+  }) : super(key: key, child: child);
+
+  @override
+  RenderObject createRenderObject(BuildContext context) {
+    return SizeReportingRenderObject(onSizeChange);
+  }
+}
+
+class SizeReportingRenderObject extends RenderProxyBox {
+  final void Function(Size size) onSizeChange;
+  Size? _oldSize;
+
+  SizeReportingRenderObject(this.onSizeChange);
+
+  @override
+  void performLayout() {
+    super.performLayout();
+    Size newSize = child!.size;
+    if (_oldSize != newSize) {
+      _oldSize = newSize;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        onSizeChange(newSize);
+      });
+    }
   }
 }
