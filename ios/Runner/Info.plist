@@ -49,5 +49,26 @@
 	<string>We need your microphone for speech recognition</string>
 	<key>Google Maps API Key</key>
 	<string>${iOSGoogleMapApiKey}</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>This app needs access to location when open.</string>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>comgooglemaps</string>
+		<string>tel</string>
+	</array>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.78816753007-lhdpnqq351ddlaqohv4fgs628p6unh4o</string>
+				<!-- Leave rest untouched -->
+				<!-- Add your custom URL scheme here -->
+				<string>tokyomania</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

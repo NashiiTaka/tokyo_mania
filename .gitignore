@@ -46,3 +46,4 @@ app.*.map.json
 **/ios/Flutter/Dart-Defines.xcconfig
 env/dev.env
 env/prd.env
+lib/sample
