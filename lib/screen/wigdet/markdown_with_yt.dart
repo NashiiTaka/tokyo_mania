@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:markdown/markdown.dart' as md;
-import 'package:tokyo_mania/src/SupabaseUtil.dart';
+import 'package:tokyo_mania/util/supabase_util.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:youtube_player_flutter/youtube_player_flutter.dart' as yt;
 import 'package:youtube_player_iframe/youtube_player_iframe.dart' as yi;
@@ -34,7 +34,7 @@ class CustomMarkdownWidget extends StatelessWidget {
       },
       styleSheet: MarkdownStyleSheet(
           a: const TextStyle(color: Colors.blue),
-          p: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          p: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
     );
   }
 }
@@ -105,6 +105,7 @@ class YouTubeBuilder extends MarkdownElementBuilder {
         
       }
     });
+    return null;
 
     // yiController.setFullScreenListener((isFullScreen) {
     //   print('isFullScreen: $isFullScreen');
@@ -224,7 +225,7 @@ class CenteredH1Builder extends MarkdownElementBuilder {
 
 // 使用例
 class MarkdownExample extends StatelessWidget {
-  const MarkdownExample({Key? key}) : super(key: key);
+  const MarkdownExample({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -235,7 +236,7 @@ class MarkdownExample extends StatelessWidget {
         builder: (BuildContext context, AsyncSnapshot<String> snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             // データ読み込み中
-            return CircularProgressIndicator();
+            return const CircularProgressIndicator();
           } else if (snapshot.hasError) {
             // エラーが発生した場合
             return Text('Error: ${snapshot.error}');

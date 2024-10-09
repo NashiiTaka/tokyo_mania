@@ -6,7 +6,7 @@ class SupabaseUtil {
   static SupabaseClient? _supabaseClient;
 
   /// Supabaseクライアントのゲッター
-  /// 
+  ///
   /// クライアントが未初期化の場合は初期化してから返します。
   static SupabaseClient get client {
     _supabaseClient ??= Supabase.instance.client;
@@ -14,9 +14,9 @@ class SupabaseUtil {
   }
 
   /// Supabaseを初期化するメソッド
-  /// 
+  ///
   /// プロジェクトのURLとanon keyを使用してSupabaseを初期化します。
-  /// 
+  ///
   /// 返り値: 初期化されたSupabaseインスタンス
   static Future<Supabase> initialize() async {
     return await Supabase.initialize(
@@ -28,10 +28,24 @@ class SupabaseUtil {
   }
 
   /// 指定されたパスの公開URLを取得するメソッド
-  /// 
+  ///
   /// @param path ストレージ内のファイルパス
   /// @return ファイルの公開URL
   static Future<String> getPublicUrl(String path) async {
-    return SupabaseUtil.client.storage.from('tokyo_mania_images').getPublicUrl(path);
+    return SupabaseUtil.client.storage
+        .from('tokyo_mania_images')
+        .getPublicUrl(path);
   }
+
+  /// ユーザーが認証されているかどうかを取得
+  static bool get isAuthenticated {
+    return SupabaseUtil.client.auth.currentSession != null;
+  }
+
+  /// ユーザーのセッションを取得
+  static Session? get activeSession => SupabaseUtil.client.auth.currentSession;
+
+  // static PostgrestFilterBuilder<T> executeQuery(String sql) {
+  //   return client.rpc('exec_sql', params: {'sql': sql});
+  // }
 }
